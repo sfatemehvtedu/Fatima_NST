@@ -1,18 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sun Feb 23 13:47:33 2025
-
-@author: sfatemeh
-"""
-
-# -*- coding: utf-8 -*-
-"""
 Spyder Editor
 
 This is the code for my thesis on the Suiattle River
 
-Tasks: 
-    - Testing testing GitHub - Allison 2/25/25
+Tasks/Issues 2-7-25:
+    - Why is transport_capacity not DS?
    
 @author: longrea, pfeiffea
 
@@ -52,7 +45,7 @@ OUT_OF_NETWORK = NetworkModelGrid.BAD_INDEX - 1
 scenario = 1
 
 if scenario == 1:
-    scenario_num = "none"
+    scenario_num = "no_abrasion"
     model_state = "no_abrasion"
 elif scenario == 2:
     scenario_num = "SHRS proxy"
@@ -62,8 +55,8 @@ else:
     model_state = "4_times SHRS proxy"
 
 # ##### Basic model parameters 
-timesteps = 100
-pulse_time = 20
+timesteps = 20
+pulse_time = 2
 num_hours_each_time = 8
 dt = 60*60*num_hours_each_time*1  # len of timesteps 
 
@@ -72,19 +65,18 @@ color = iter(plt.cm.viridis(np.linspace(0, 1, n_lines+1)))
 c = next(color)
 
 # bookkeeping 
-new_dir_name = "AP2000x8hr" + model_state ## Use when testing
-#new_dir_name = "Longer_Run_Test_Scenario_1" + model_state
+run_name = "Suiattle_" + model_state ## Use when testing
 
-new_dir = pathlib.Path(os.getcwd(), new_dir_name)
-new_dir.mkdir(parents=True, exist_ok=True)
-output_folder = os.path.join(os.getcwd (), ("Results-"+ new_dir_name))
-if not os.path.exists(output_folder):
-    os.mkdir(output_folder)
+base_dir = pathlib.Path.home() / "Documents" / "GitHub" / "Results"
 
+output_folder = base_dir/run_name
+output_folder.mkdir(parents=True, exist_ok=True)
 
 # %% ##### Set up the grid, channel characteristics #####
-shp_file = os.path.join(os.getcwd (), ("Suiattle_river.shp"))
-points_shapefile = os.path.join(os.getcwd(), ("Suiattle_nodes.shp"))
+current_dir = pathlib.Path.cwd()
+
+shp_file = os.path.join(current_dir.parent, ("data_Suia/Suiattle_river.shp"))
+points_shapefile = os.path.join(current_dir.parent, ("data_Suia/Suiattle_nodes.shp"))
 
 grid = read_shapefile(
     shp_file,
@@ -303,57 +295,69 @@ Sand_fraction_active = np.ones([grid.number_of_links,timesteps])*np.nan
 
 Elev_change_DS = np.empty([grid.number_of_nodes,timesteps]) # 2d array of elevation change in each timestep 
 
+
 # %% Pulse element variables
-fan_location= np.array([60])
+fan_thickness = np.array([3.0, 6.25, 6.25, 5.75, 2.75, 1.25]) #meters
+fan_location= np.array([6, 7, 8, 9, 10, 11])
+
+
+
 pulse_parcel_vol = 25 #volume of each parcel m^3 - edited 1/9/25
- 
-initial_pulse_volume = 121943 # m^3; volume of pulse that should be added to each link of the Chocolate Fan
+total_num_pulse_parcels = np.int64(4900000/pulse_parcel_vol * (1-bed_porosity))  
+
+
+initial_pulse_volume = fan_thickness*length[fan_location]*width[fan_location] # m^3; volume of pulse that should be added to each link of the Chocolate Fan
 initial_pulse_rock_volume = initial_pulse_volume * (1-bed_porosity)
 initial_num_pulse_parcels_by_vol = initial_pulse_rock_volume/pulse_parcel_vol #number of parcels added to each link based on volume; 
-#total_num_initial_pulse_parcels = int(np.sum(initial_num_pulse_parcels_by_vol))
-total_num_initial_pulse_parcels = int(np.round(initial_num_pulse_parcels_by_vol))
-total_num_initial_pulse_parcels = np.copy(initial_num_pulse_parcels_by_vol).astype(int)
+total_num_initial_pulse_parcels = int(np.sum(initial_num_pulse_parcels_by_vol))
 
-#total_num_added_pulse_parcels = 0
+total_num_added_pulse_parcels = 0
 
 ## distribute the total_num_pulse_parcels proportional to fan thickness instead of evenly -- needs clean up
-fan_proportions = 1
-pulse_location = np.full(total_num_initial_pulse_parcels, 60, dtype=int)  # Creates a NumPy array
-print(type(pulse_location))  # <class 'numpy.ndarray'>
-print(pulse_location[:5])    # [60 60 60 60 60]
+fan_proportions = fan_thickness / fan_thickness.sum()
 
-newpar_element_id = np.expand_dims(pulse_location, axis=1)  # (N, time)
-new_starting_link = np.array(pulse_location, dtype=int)  # (N,)
+# Distribute total_num_pulse_parcels according to the proportions
+pulse_each_fan_link = (fan_proportions * total_num_pulse_parcels).astype(int) #
+
+# Calculate the remainder due to integer conversion
+remainder = total_num_pulse_parcels - pulse_each_fan_link.sum()
+
+# Add the remainder to the largest element in pulse_each_link
+pulse_each_fan_link[np.argmax(fan_proportions)] += remainder
+
+pulse_location = [index for index, freq in enumerate((pulse_each_fan_link).astype(int), start=6) for _ in range(freq)]
+
+random.shuffle(pulse_location)
+
+newpar_element_id = pulse_location
+newpar_element_id = np.expand_dims(newpar_element_id, axis=1)   
 
 
-#np.random.seed(0)
+new_starting_link = np.squeeze(pulse_location)
+
+np.random.seed(0)
  
-new_volume = np.full((total_num_initial_pulse_parcels, 1), pulse_parcel_vol, dtype=float)  # (N, 1)
+new_volume = pulse_parcel_vol*np.ones(np.shape(newpar_element_id))  # (m3) the volume of each parcel
 
-print("Shape of new_volume:", new_volume.shape)  # Expected: (N, 1)
-print("Unique values in new_volume:", np.unique(new_volume))  # Expected: [pulse_parcel_vol]
-
-
-#new_source = np.full((total_num_initial_pulse_parcels, 1), "pulse", dtype=object)  # (N, 1)
- # a source sediment descriptor for each parcel #(N, 1) 
-new_source = np.full(total_num_initial_pulse_parcels, "pulse", dtype=object)  # ✅ Correct shape (N,)
-
+new_source = ["pulse"] * np.size(
+    newpar_element_id
+)  # a source sediment descriptor for each parcel
 
 new_active_layer = np.zeros(
     np.shape(newpar_element_id)
-)  # 1 = active/surface layer; 0 = subsurface layer #(N, 1)
+)  # 1 = active/surface layer; 0 = subsurface layer
 
 new_location_in_link = np.random.rand(
     np.size(newpar_element_id), 1
-) #(N, 1)
-
+)
 newpar_grid_elements = np.array(
     np.empty(
         (np.shape(newpar_element_id)), dtype=object
     )
-) #(N, 1)
+)
 
 newpar_grid_elements.fill("link")
+
 # %% grain size for Pulse
 
 # field_grain_sizes = pd.read_excel((os.path.join(os.getcwd (), ("SuiattleFieldData_Combined20182019.xlsx"))), sheet_name = '3 - Grain size df deposit', header = 0)
@@ -374,10 +378,24 @@ newpar_grid_elements.fill("link")
 # truncated_GSD = scaled_gsd[scaled_gsd < 0.5]
 # #truncated_GSD = grain_sizes[grain_sizes < 0.5]
 
+# new_D[:,0] = truncated_GSD[:total_num_pulse_parcels]
+# total_num_pulse_moved = 0
+
+# count = np.linspace(0,100,len(Suiattle_gsd_m))
+
+# # Plot scaled G
+# plt.semilogx(np.sort(Suiattle_gsd_m),count, color ="blue")
+# plt.plot(np.log(sorted_scaled_gsd),scaled_count, color= "red")
+# plt.xlabel('Grain Size (log scale)')
+# plt.ylabel('Cumulative % Finer')
+# plt.show()
+
 new_D = np.empty(((np.shape(newpar_element_id)[0]), 1), dtype=float)
 new_D[:,0] =0.0001
+
 # %% Abrasion scenarios using Allison's field data
-field_data = pd.read_excel((os.path.join(os.getcwd (), ("SuiattleFieldData_Combined20182019.xlsx"))), sheet_name = '4-SHRSdfDeposit', header = 0)
+field_data = pd.read_excel((os.path.join(current_dir.parent, ("data_Suia/SuiattleFieldData_Combined20182019.xlsx"))), sheet_name = '4-SHRSdfDeposit', header = 0)
+
 SHRS = field_data['SHRS median'].values
 SHRS_MEAN = np.mean(SHRS)
 SHRS_STDEV = np.std(SHRS)
@@ -416,7 +434,7 @@ new_abrasion_rate[flat_new_D < 0.002] = 0
 figAnim, axAnim = plt.subplots(1, 1)
 writer = animation.FFMpegWriter(fps=6)
 
-gif_name = output_folder +"/"+ new_dir_name + "--Elev_through_time.gif"
+gif_name = str(output_folder) +"/"+ run_name + "--Elev_through_time.gif"
 writer.setup(figAnim,gif_name)
 
 # %% Model run
@@ -499,38 +517,26 @@ for t in range(0, (timesteps*dt), dt):
     d_recycled_parcels[np.int64(t/dt)]=np.mean(parcels.dataset.D.values[parcels.dataset.element_id.values[:,-1] == OUT_OF_NETWORK,-1])
     
     
-# %% ########## Making a pulse ############# 
-    #  Prevent multiple additions of pulse parcels
+# %% ########## Making a pulse #############  
     mask_ispulse = parcels.dataset.source == 'pulse'
-     #Calculate the current timestep
+
+    # Calculate the current timestep
     current_timestep = t // dt
     
-    if current_timestep == pulse_time :
-        print("\n# First pulse time - Adding parcels now!")
-        
-        
-        
+
+    # Check if it's the time for pulse evaluation
+    
+    if t == dt * pulse_time:  
+            
+        print ("# First pulse time")
+    
         new_time_arrival_in_link = nst._time_idx + np.expand_dims(
                 np.random.uniform(size=total_num_initial_pulse_parcels), axis=1
             )
 
         new_parcels = {"grid_element": newpar_grid_elements[:total_num_initial_pulse_parcels],
               "element_id": newpar_element_id[:total_num_initial_pulse_parcels]}
-        
-        print("Type of new_starting_link:", type(new_starting_link))
-        print("Shape of new_starting_link:", np.shape(new_starting_link))  # Expected (N,)
-        
-        new_parcels = {"grid_element": newpar_grid_elements[:total_num_initial_pulse_parcels],
-              "element_id": newpar_element_id[:total_num_initial_pulse_parcels]}
-        print("Unique newpar_element_id:", np.unique(newpar_element_id))
-        print("Expected valid IDs:", np.unique(grid.nodes))  # Modify if using links
-        
-        # Ensure `newpar_element_id` contains only valid grid elements
-        valid_element_ids = np.unique(grid.nodes)  # Use `grid.links` if needed
-        if not np.all(np.isin(newpar_element_id.flatten(), valid_element_ids)):
-            raise ValueError("Invalid element_ids detected! Check pulse location assignment.")
-        
-        
+
         new_variables = {
             "starting_link": (["item_id"], new_starting_link[:total_num_initial_pulse_parcels]),
             "abrasion_rate": (["item_id"], new_abrasion_rate[:total_num_initial_pulse_parcels]),
@@ -548,9 +554,19 @@ for t in range(0, (timesteps*dt), dt):
                 new_item = new_parcels,
                 new_item_spec = new_variables
                 )
+        
+        total_num_added_pulse_parcels = total_num_initial_pulse_parcels
 
-        print(f"Total PULSE parcels AFTER addition: {np.sum(parcels.dataset.source == 'pulse')}")
-        print(f"Newly added parcel element IDs: {np.unique(newpar_element_id)}")          
+        new_source = np.array(new_source)
+        percent_pulse_added[np.int64(t/dt)] = total_num_added_pulse_parcels/total_num_pulse_parcels
+        
+        print('making a pulse')
+        print("On this timestep the total number of pulse parcels added = ", total_num_added_pulse_parcels)
+        
+        print('total_num_added_pulse_parcels =', total_num_added_pulse_parcels)
+        print('t = ',t, ',timestep = ', t/dt) 
+        
+
 # %% Run one timestep    
     
     # #######   Ta da!    #########     
@@ -646,7 +662,7 @@ for t in range(0, (timesteps*dt), dt):
     vol_pulse_on[np.int64(t/dt)]=np.sum(volume_of_pulse[element_pulse!= OUT_OF_NETWORK])
     vol_pulse_exited[np.int64(t/dt)]=np.sum(volume_of_pulse[element_pulse == OUT_OF_NETWORK])
     
-    vol_pulse_abraded[np.int64(t/dt)]= ((total_num_initial_pulse_parcels
+    vol_pulse_abraded[np.int64(t/dt)]= ((total_num_added_pulse_parcels
                                         * pulse_parcel_vol)
                                         - vol_pulse_on[np.int64(t/dt)]
                                         - vol_pulse_exited[np.int64(t/dt)]
@@ -689,7 +705,7 @@ for t in range(0, (timesteps*dt), dt):
         number_of_links,
         )
     
-#    D50s_each_link[:,np.int64(t/dt)] = nst._d50_active.copy() # THIS DOESN"T WORK.. why?
+    D50s_each_link[:,np.int64(t/dt)] = nst._d50_active.copy() # THIS DOESN"T WORK.. why?
     
     num_total_parcels_each_link[:, np.int64(t/dt)] = aggregate_items_as_count(
         element_all_parcels,
@@ -739,7 +755,9 @@ writer.finish()
 
 # %% Variable bookkeeping - downstream sorting, etc
 
-pre_pulse_D50s = D50s_each_link[:, pulse_time-1].reshape(-1, 1)  # Reshape to (number_of_links, 1) for broadcasting
+pre_pulse_D50s = np.mean(D50s_each_link[:, pulse_time-20:pulse_time-1],axis = 1) # average of 10 timesteps before
+pre_pulse_D50s = pre_pulse_D50s.reshape(-1, 1)
+
 Change_D50s_each_link = D50s_each_link - pre_pulse_D50s
 
 pre_pulse_Dmean = D_mean_active_each_link[:, pulse_time-1].reshape(-1, 1)  # Reshape to (number_of_links, 1) for broadcasting
@@ -824,7 +842,7 @@ plt.pcolor(days, dist_downstream_DS, Sand_fraction_active,
 plt.colorbar(label= "Sand fraction")
 plt.xlabel('Days')
 plt.ylabel('Distance downstream (km)')
-plot_name = str(new_dir) + "/" + 'Sand_frac(Scenario' + str(scenario_num) + ').png'
+plot_name = str(output_folder) + "/" + 'Sand_frac(Scenario' + str(scenario_num) + ').png'
 plt.savefig(plot_name)
 plt.show()
 
@@ -832,7 +850,7 @@ plt.figure(dpi=600)
 plt.plot(days, percent_pulse_added, '.') 
 plt.xlabel('Days')
 plt.ylabel('Fraction of Pulse added')
-plot_name = str(new_dir) + "/" + 'percentage of the pulse added (Scenario' + str(scenario_num) + ').png'
+plot_name = str(output_folder) + "/" + 'percentage of the pulse added (Scenario' + str(scenario_num) + ').png'
 plt.savefig(plot_name)
 plt.show()
 
@@ -841,7 +859,7 @@ plt.pcolor(days, dist_downstream_DS, Slope_through_time_DS, cmap = 'RdBu', norm 
 plt.colorbar(label= "Change in Slope")
 plt.xlabel('Days')
 plt.ylabel("Distance downstream (km)")
-plot_name = str(new_dir) + "/" + 'slope_change (Scenario' + str(scenario_num) + ').png'
+plot_name = str(output_folder) + "/" + 'slope_change (Scenario' + str(scenario_num) + ').png'
 plt.savefig(plot_name)
 plt.show()
 
@@ -850,7 +868,7 @@ plt.pcolor(days, dist_downstream_DS, Change_Dmean_each_link_DS, cmap = 'PuOr', n
 plt.colorbar(label= "Mean surface D change (m)")
 plt.xlabel('Days')
 plt.ylabel("Distance downstream (km)")
-plot_name = str(new_dir) + "/" + 'Dmean_change (Scenario' + str(scenario_num) + ').png'
+plot_name = str(output_folder) + "/" + 'Dmean_change (Scenario' + str(scenario_num) + ').png'
 plt.savefig(plot_name)
 plt.show()
 
@@ -859,7 +877,7 @@ plt.pcolor(days, dist_downstream_DS, Change_D50s_each_link_DS, cmap = 'PuOr', no
 plt.colorbar(label= "D50s change (m)")
 plt.xlabel('Days')
 plt.ylabel("Distance downstream (km)")
-plot_name = str(new_dir) + "/" + 'D50s_change (Scenario' + str(scenario_num) + ').png'
+plot_name = str(output_folder) + "/" + 'D50s_change (Scenario' + str(scenario_num) + ').png'
 plt.savefig(plot_name)
 plt.show()
 
@@ -909,17 +927,17 @@ plot_titles = {
 
 # Define plot names with new names
 plot_names = {
-    'num_pulse_each_link_DS': f"{new_dir}/TotalPulseParcel(Scenario{scenario_num}).png",
-    'num_total_parcels_each_link_DS': f"{new_dir}/Total_parcel(Scenario{scenario_num}).png",
-    'num_active_pulse_nozero_DS': f"{new_dir}/ActivePulse(Scenario{scenario_num}).png",
-    'vol_pulse_nozero_DS': f"{new_dir}/Vol_pulse(Scenario{scenario_num}).png",
-    'vol_nozero_DS': f"{new_dir}/Vol(Scenario{scenario_num}).png",
-    'D_mean_pulse_each_link_nozero_DS': f"{new_dir}/D_mean_pulse(Scenario{scenario_num}).png",
-    'percent_active_pulse_DS': f"{new_dir}/fraction_active_pulse(Scenario{scenario_num}).png",
-    'percent_active_DS': f"{new_dir}/Fraction_Active (Scenario{scenario_num}).png",
-    'Elev_change_DS': f"{new_dir}/TrackElevChange(Scenario{scenario_num}).png",
-    #'transport_capacity': f"{new_dir}/transport_capacity(Scenario{scenario_num}).png",
-    #'transport_capacity_limited': f"{new_dir}/transport_capacity_limited(Scenario{scenario_num}).png",
+    'num_pulse_each_link_DS': f"{output_folder}/TotalPulseParcel(Scenario{scenario_num}).png",
+    'num_total_parcels_each_link_DS': f"{output_folder}/Total_parcel(Scenario{scenario_num}).png",
+    'num_active_pulse_nozero_DS': f"{output_folder}/ActivePulse(Scenario{scenario_num}).png",
+    'vol_pulse_nozero_DS': f"{output_folder}/Vol_pulse(Scenario{scenario_num}).png",
+    'vol_nozero_DS': f"{output_folder}/Vol(Scenario{scenario_num}).png",
+    'D_mean_pulse_each_link_nozero_DS': f"{output_folder}/D_mean_pulse(Scenario{scenario_num}).png",
+    'percent_active_pulse_DS': f"{output_folder}/fraction_active_pulse(Scenario{scenario_num}).png",
+    'percent_active_DS': f"{output_folder}/Fraction_Active (Scenario{scenario_num}).png",
+    'Elev_change_DS': f"{output_folder}/TrackElevChange(Scenario{scenario_num}).png",
+    #'transport_capacity': f"{output_folder}/transport_capacity(Scenario{scenario_num}).png",
+    #'transport_capacity_limited': f"{output_folder}/transport_capacity_limited(Scenario{scenario_num}).png",
 }
 
 # Define colormaps with new names
@@ -1039,7 +1057,7 @@ if np.max(vol_pulse_abraded)>0.05*median_y:
 plt.xlabel('Days')
 plt.ylabel(r'total pulse vol (m$^3$)')
 
-plot_name = str(new_dir) + "/" + 'PulseAbrasionRemaining(Scenario' + str(scenario_num) + ').png'
+plot_name = str(output_folder) + "/" + 'PulseAbrasionRemaining(Scenario' + str(scenario_num) + ').png'
 plt.savefig(plot_name, dpi=700)
 
 
@@ -1048,7 +1066,7 @@ plt.figure()
 plt.plot(elev_change_at_link)
 plt.title("Change in elevation through time (Scenario = %i)" %scenario)
 plt.ylabel("Elevation change (m)")
-plot_name = str(new_dir) + "/" + 'TrackElevChangev2(Scenario' + str(scenario_num) + ').png'
+plot_name = str(output_folder) + "/" + 'TrackElevChangev2(Scenario' + str(scenario_num) + ').png'
 plt.savefig(plot_name, dpi=700)
 #plt.savefig('TrackElevChangev2 (Scenario'+scenario_num+ ').png')
 
@@ -1058,10 +1076,10 @@ ax2 = ax1.twinx()
 ax1.plot(days, d_recycled_parcels,'-', color='brown')
 ax2.plot(days, n_recycled_parcels,'-', color='k') #,'.' makes it a dot chart, '-' makes line chart
 ax1.set_xlabel("Days")
-ax1.set_ylabel("Mean D recycled parcels (m)", color='k')
+ax1.set_ylabel("Mean D recycled parcels (m)", color='brown')
 plt.title("Recycled parcels (Scenario = %i)" %scenario)
-ax2.set_ylabel("Number of recycled parcels", color='brown')
-plot_name = str(new_dir) + "/" + 'Recycled(Scenario' + str(scenario_num) + ').png'
+ax2.set_ylabel("Total number of recycled parcels", color='k')
+plot_name = str(output_folder) + "/" + 'Recycled(Scenario' + str(scenario_num) + ').png'
 plt.savefig(plot_name, dpi=700)
 plt.show()
 
@@ -1098,7 +1116,7 @@ plt.title('Initial and final pulse grain size CDF (source=pulse)')
 plt.grid(True, linestyle='--', alpha=0.6)
 plt.xscale('log')
 plt.xlim(0.002,1)
-plot_name = str(new_dir) + "/" + 'GSD (Scenario' + str(scenario_num) + ').png'
+plot_name = str(output_folder) + "/" + 'GSD (Scenario' + str(scenario_num) + ').png'
 plt.savefig(plot_name)
 plt.legend()
 plt.show()
@@ -1109,7 +1127,7 @@ plt.plot(num_active_parcels_each_link_DS)
 plt.title("Number of parcels active (Scenario = %i)" %scenario)
 plt.xlabel("Link number downstream")
 plt.ylabel("Number of active parcels")
-plot_name = str(new_dir) + "/" + 'ActiveParcel(Scenario' + str(scenario_num) + ').png'
+plot_name = str(output_folder) + "/" + 'ActiveParcel(Scenario' + str(scenario_num) + ').png'
 plt.savefig(plot_name, dpi=700)
 plt.show()
 
@@ -1123,7 +1141,7 @@ ax1.set_xlabel("Distance downstream (km)")
 ax1.set_ylabel("D50", color='k')
 plt.title("Number of parcels and the grain size (Scenario = %i)" %scenario)
 ax2.set_ylabel("Number of total parcels", color='brown')
-plot_name = str(new_dir) + "/" + 'RSM(Scenario' + str(scenario_num) + ').png'
+plot_name = str(output_folder) + "/" + 'RSM(Scenario' + str(scenario_num) + ').png'
 plt.savefig(plot_name, dpi=700)
 plt.show()
 
@@ -1151,7 +1169,7 @@ plt.show()
 
 # # log_width = np.log(width)
 # # fig = plot_network_and_parcels(grid,parcels,parcel_time_index=0,link_attribute=('elevation_change'),parcel_alpha=0,network_linewidth=log_width, link_attribute_title= "Elevation Change in each reach (m)", network_cmap= "coolwarm")
-# # plot_name = str(new_dir) + "/" + 'NST_ELEVCHANGE(Scenario' + str(scenario_num) + ').jpg'
+# # plot_name = str(output_folder) + "/" + 'NST_ELEVCHANGE(Scenario' + str(scenario_num) + ').jpg'
 # # fig.savefig(plot_name, bbox_inches='tight', dpi=700)
 
 
@@ -1192,14 +1210,12 @@ plt.show()
 
 # %% GIF within a link parcels
 
-for link in np.array([40,58,60,65,67,69,70,73, 76, 80, 90,100,120,160]):#range(16):#range(grid.number_of_links):
-    output_folder = os.path.join(os.getcwd (), ("Gifs replace this folder"))
-    if not os.path.exists(output_folder):
-        os.mkdir(output_folder)
+for link in np.array([4,9,12,13,14,40,60,100]):#range(16):#range(grid.number_of_links):
+
     # Initiate an animation writer using the matplotlib module, `animation`.
     figPulseAnim, axPulseAnim = plt.subplots(1, 1, dpi=600)
     writer = animation.FFMpegWriter(fps=20)
-    gif_name = output_folder +"/"+ scenario_num + "--Parcel_evol_at_link" + str(link) +".gif"
+    gif_name = str(output_folder) +"/"+ scenario_num + "--Parcel_evol_at_link" + str(link) +".gif"
     writer.setup(figPulseAnim,gif_name)
     for tstep in np.arange(0,timesteps,5):#range(timesteps):
     # for tstep in [500]: # for now, doing for just one timestep
@@ -1255,15 +1271,18 @@ volumes = parcels.dataset.volume.values
 element_ids = parcels.dataset.element_id.values
 recycle = parcels.dataset["recycle_destination"].values
 
+npz_vars_name = str(output_folder) +"/"+ scenario_num + "Variables.npz"
 
-np.savez("All_3.npz", mask_here=mask_here, time_arrival=time_arrival, volumes=volumes,current_link=current_link, this_links_parcels=this_links_parcels,
+npz_pcolor_name = str(output_folder) +"/"+ scenario_num + "PcolorVars.npz"
+
+np.savez(npz_vars_name, mask_here=mask_here, time_arrival=time_arrival, volumes=volumes,current_link=current_link, this_links_parcels=this_links_parcels,
           time_arrival_sort=time_arrival_sort,
           parcel_id_time_sorted=parcel_id_time_sorted, vol_ordered_filo=vol_ordered_filo, cumvol_orderedfilo=cumvol_orderedfilo,
           effectiveheight_orderedfilo=effectiveheight_orderedfilo, source_orderedfilo=source_orderedfilo, active_orderedfilo=active_orderedfilo,
         location_in_link_orderedfilo=location_in_link_orderedfilo, D_orderedfilo=D_orderedfilo)
 
 
-np.savez("P_3.npz", sediment_active_percent=sediment_active_percent, num_pulse_each_link_DS=num_pulse_each_link_DS, 
+np.savez(npz_pcolor_name, sediment_active_percent=sediment_active_percent, num_pulse_each_link_DS=num_pulse_each_link_DS, 
          num_total_parcels_each_link_DS=num_total_parcels_each_link_DS, num_active_pulse_nozero_DS=num_active_pulse_nozero_DS, 
          vol_pulse_nozero_DS=vol_pulse_nozero_DS, vol_nozero_DS=vol_nozero_DS, D_mean_pulse_each_link_nozero_DS=D_mean_pulse_each_link_nozero_DS,
          percent_active_pulse_DS=percent_active_pulse_DS, percent_active_DS=percent_active_DS, Elev_change_DS=Elev_change_DS, Sed_flux=Sed_flux,
@@ -1282,17 +1301,22 @@ np.savez("P_3.npz", sediment_active_percent=sediment_active_percent, num_pulse_e
          width_DS=width_DS, topo_DS=topo_DS, area_link_DS= area_link_DS, area_node_DS = area_node_DS, initial_vol_on_link= initial_vol_on_link
           ) 
 
+
+# To open the files created above, use: 
+# loaded = np.load("P_scenario3.npz", allow_pickle=True)
+# array1 = loaded["num_total_parcels_each_link_DS"] # To access the arrays:
+# data = {key: loaded[key] for key in loaded.files} # To make it a dictionary:
+
 # Saving a text file of model characteristics
 timestep_in_days = dt/86400
 # Converting the time in seconds to a timestamp
-#c_ti = model_time.ctime(os.path.getctime("NST_Suiattle_Before pickel_Nov14.py"))
-text_file = os.path.join(new_dir, 'TESTING ('+scenario_num+ ').txt')   
-file = open('Suiattle_run_characteristics'+scenario_num+ ').txt', 'w')
+  
+file = open(str(output_folder)+'/Suiattle_run_characteristics_'+scenario_num+ '.txt', 'w')
 model_characteristics = ["This code is running for scenario %s" %scenario,  "This is the tau_c_multiplier %s" %tau_c_multiplier, 
                           "This is the number of timesteps %s" %timesteps, "The number of days in each timestep is %s" % timestep_in_days, # length of dt in days
                           "The pulse is added at timestep %s" %pulse_time,
                           "The volume of each pulse parcel is %s" %pulse_parcel_vol, "This is the number of pulse parcels added to the network %s"
-                          %total_num_initial_pulse_parcels,
+                          %total_num_added_pulse_parcels,
                           
                           "The current stage of this code is editing variables to be normalized since steady state."]
 for line in model_characteristics:
@@ -1323,3 +1347,36 @@ file.close()
 
 # with open(file_path, 'rb') as file:
 #     parcels = pickle.load(file)
+
+# Plot for the leading edge of the pulse
+percent_of_pulse = [0.5, 1, 2]
+
+for percent in percent_of_pulse:
+
+    leading_edge = np.ones(timesteps) * np.nan
+
+
+    the_pc_initial_pulse_vol = np.sum(initial_pulse_volume) * percent
+    
+    
+    sorted_pulse_volume = volume_pulse_at_each_link_DS[::-1]
+    sorted_summed_pulse_volume = (np.cumsum(sorted_pulse_volume,axis = 0)
+        + vol_pulse_exited
+        + vol_pulse_abraded
+        )
+    exceed_mask = sorted_summed_pulse_volume > the_pc_initial_pulse_vol
+    first_exceed_index = np.where(exceed_mask.any(axis=0), np.argmax(exceed_mask, axis=0), np.nan)
+    pulse_5pct_vol_loc_km = np.full(timesteps, np.nan)
+    valid_indices = ~np.isnan(first_exceed_index)
+    dist_upstream = dist_downstream_DS[::-1]
+    valid_indices = ~np.isnan(first_exceed_index)
+    leading_edge[valid_indices] = dist_upstream[first_exceed_index[valid_indices].astype(int)]
+    plt.figure(figsize=(8, 5))
+    plt.plot(days, leading_edge, linestyle='-', color='b', label="Leading edge of pulse")
+    plt.ylim(0,np.max(dist_downstream_DS))
+    plt.xlabel("Time (days)")
+    plt.ylabel("Downstream Distance (km)")
+    plt.title("Celerity of leading edge")
+    plt.legend()
+    plt.grid()
+    plt.show()
