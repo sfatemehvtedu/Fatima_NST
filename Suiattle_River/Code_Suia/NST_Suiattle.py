@@ -2,12 +2,13 @@
 """
 Spyder Editor
 
-This is the code for my thesis on the Suiattle River
+This is the code for my Fatemeh's dissertation research
 
-Tasks/Issues 2-7-25:
-    - Why is transport_capacity not DS?
+Tasks/Issues 2-26-25:
+    - one script for all sites
+    - check recycling
    
-@author: longrea, pfeiffea
+@author: longrea, pfeiffea, sfatemehvtedu
 
 """
 # %% import
@@ -55,10 +56,10 @@ else:
     model_state = "4_times SHRS proxy"
 
 # ##### Basic model parameters 
-timesteps = 20
+timesteps = 100
 pulse_time = 2
-num_hours_each_time = 8
-dt = 60*60*num_hours_each_time*1  # len of timesteps 
+num_hours_each_timestep = 8
+dt = 60*60*num_hours_each_timestep  # len of timesteps, in seconds 
 
 n_lines = 10 # note: # timesteps must be divisible by n_lines with timesteps%n_lines == 0
 color = iter(plt.cm.viridis(np.linspace(0, 1, n_lines+1)))
@@ -285,7 +286,7 @@ volume_pulse_at_each_link = np.ones([grid.number_of_links,timesteps])*np.nan
 num_active_pulse= np.ones([grid.number_of_links,timesteps])*np.nan
 
 time_array= np.arange(1, timesteps + 1)
-days = (time_array * num_hours_each_time) / 24
+days = (time_array * num_hours_each_timestep) / 24
 num_days = days[-1]
 time_array_ss= np.arange(pulse_time, timesteps+1)#ss = steady state
 canyon_reaches= index_sorted_area_link[43:54]
@@ -298,9 +299,7 @@ Elev_change_DS = np.empty([grid.number_of_nodes,timesteps]) # 2d array of elevat
 
 # %% Pulse element variables
 fan_thickness = np.array([3.0, 6.25, 6.25, 5.75, 2.75, 1.25]) #meters
-fan_location= np.array([6, 7, 8, 9, 10, 11])
-
-
+fan_location= np.array([6, 7, 8, 9, 10, 11]) #+ 60
 
 pulse_parcel_vol = 25 #volume of each parcel m^3 - edited 1/9/25
 total_num_pulse_parcels = np.int64(4900000/pulse_parcel_vol * (1-bed_porosity))  
@@ -325,7 +324,7 @@ remainder = total_num_pulse_parcels - pulse_each_fan_link.sum()
 # Add the remainder to the largest element in pulse_each_link
 pulse_each_fan_link[np.argmax(fan_proportions)] += remainder
 
-pulse_location = [index for index, freq in enumerate((pulse_each_fan_link).astype(int), start=6) for _ in range(freq)]
+pulse_location = [index for index, freq in enumerate((pulse_each_fan_link).astype(int), start=np.min(fan_location)) for _ in range(freq)]
 
 random.shuffle(pulse_location)
 
@@ -391,7 +390,7 @@ newpar_grid_elements.fill("link")
 # plt.show()
 
 new_D = np.empty(((np.shape(newpar_element_id)[0]), 1), dtype=float)
-new_D[:,0] =0.0001
+new_D[:,0] =0.01
 
 # %% Abrasion scenarios using Allison's field data
 field_data = pd.read_excel((os.path.join(current_dir.parent, ("data_Suia/SuiattleFieldData_Combined20182019.xlsx"))), sheet_name = '4-SHRSdfDeposit', header = 0)
