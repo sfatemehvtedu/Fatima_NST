@@ -42,45 +42,121 @@ OUT_OF_NETWORK = NetworkModelGrid.BAD_INDEX - 1
 
 # %% Basic model setup and knobs 
 
-# #### Selecting abrasion/density scenario #####
-scenario = 1
+# #### Selecting channel #####
+River = 1 # 1 = Suiattle, 2 = WhiteRainier, 3 = WhiteSalmon, 4 = Lillooet
 
-if scenario == 1:
-    scenario_num = "no_abrasion"
-    model_state = "no_abrasion"
-elif scenario == 2:
-    scenario_num = "SHRS proxy"
-    model_state = "SHRS proxy"
-else: 
-    scenario_num = "4_times SHRS proxy"
-    model_state = "4_times SHRS proxy"
+# #### Selecting abrasion/density scenario #####
+scenario = 1 # 1= no abrasion, 2 = SHRS proxy, 3 = 4xSHRS
+
+# #### Optional note for saving
+run_note = 'testing' # adds this text to "run name". For shorter file names, try [] 
 
 # ##### Basic model parameters 
-timesteps = 100
+timesteps = 10
 pulse_time = 2
 num_hours_each_timestep = 8
 dt = 60*60*num_hours_each_timestep  # len of timesteps, in seconds 
 
+
+# Set up abrasion scenario
+if scenario == 1:
+    scenario_num = "1-no-abr"
+
+elif scenario == 2:
+    scenario_num = "2-abrSHRS"
+
+elif scenario ==3: 
+    scenario_num = "3-abr4xSHRS"
+
+model_state = scenario_num + "_" + str(timesteps) + "x" +str(num_hours_each_timestep) + "hr_" + run_note
+
+# Point to River specific shapefiles, results folder specific to site
+
+base_dir = pathlib.Path.home() / "Documents" / "GitHub" / "Results"
+current_dir = pathlib.Path.cwd()
+
+
+if River == 1: # Suiattle
+    river_name = 'Suiattle'
+    run_name = river_name + model_state
+
+    output_folder = base_dir/run_name
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    # import data: shapefiles, excel
+    links_shapefile = os.path.join(current_dir, ("Suiattle_River_Data/Suiattle_river.shp"))
+    points_shapefile = os.path.join(current_dir, ("Suiattle_River_Data/Suiattle_nodes.shp"))
+    
+    field_grain_sizes = pd.read_excel((os.path.join(current_dir, ("Suiattle_River_Data/SuiattleFieldData_Combined20182019.xlsx"))), sheet_name = '3 - Grain size df deposit', header = 0)
+    field_grain_strength = pd.read_excel((os.path.join(current_dir, ("Suiattle_River_Data/SuiattleFieldData_Combined20182019.xlsx"))), sheet_name = '4-SHRSdfDeposit', header = 0)
+
+    # Links we add pulse sediment to
+    fan_location= np.array([6, 7, 8, 9, 10, 11]) #+ 60 
+
+elif River == 2: # White Rainier
+    river_name = 'WhiteRainier'
+    run_name = river_name + model_state
+
+    output_folder = base_dir/run_name
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    # import data: shapefiles, excel
+    links_shapefile = os.path.join(current_dir, ("White_River_Data/INSERT_name_here.shp"))
+    points_shapefile = os.path.join(current_dir, ("White_River_Data/INSERT_name_here.shp"))
+    
+    field_grain_sizes = pd.read_excel((os.path.join(current_dir, ("White_River_Data/INSERT_name_here.xlsx"))), sheet_name = 'insert here', header = 0)
+    field_grain_strength = pd.read_excel((os.path.join(current_dir, ("White_River_Data/INSERT_name_here.xlsx"))), sheet_name = 'insert here', header = 0)
+
+    # Links we add pulse sediment to
+    fan_location= np.array([6, 7, 8, 9, 10, 11]) #+ 60 
+    
+elif River == 3: # White Salmon
+    river_name = 'WhiteSalmon'
+    run_name = river_name + model_state
+
+    output_folder = base_dir/run_name
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    # import data: shapefiles, excel
+    links_shapefile = os.path.join(current_dir, ("WhiteSalmon_River_Data/INSERT_name_here.shp"))
+    points_shapefile = os.path.join(current_dir, ("WhiteSalmon_River_Data/INSERT_name_here.shp"))
+    
+    field_grain_sizes = pd.read_excel((os.path.join(current_dir, ("WhiteSalmon_River_Data/INSERT_name_here.xlsx"))), sheet_name = 'insert here', header = 0)
+    field_grain_strength = pd.read_excel((os.path.join(current_dir, ("WhiteSalmon_River_Data/INSERT_name_here.xlsx"))), sheet_name = 'insert here', header = 0)
+
+    # Links we add pulse sediment to
+    fan_location= np.array([6, 7, 8, 9, 10, 11]) #+ 60 
+    
+elif River == 4: # Lillooet
+    river_name = 'Lillooet'
+    run_name = river_name + model_state
+
+    output_folder = base_dir/run_name
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    # import data: shapefiles, excel
+    links_shapefile = os.path.join(current_dir, ("Lillooet_River_Data/INSERT_name_here.shp"))
+    points_shapefile = os.path.join(current_dir, ("Lillooet_River_Data/INSERT_name_here.shp"))
+    
+    field_grain_sizes = pd.read_excel((os.path.join(current_dir, ("Lillooet_River_Data/INSERT_name_here.xlsx"))), sheet_name = 'insert here', header = 0)
+    field_grain_strength = pd.read_excel((os.path.join(current_dir, ("Lillooet_River_Data/INSERT_name_here.xlsx"))), sheet_name = 'insert here', header = 0)
+
+    # Links we add pulse sediment to
+    fan_location= np.array([6, 7, 8, 9, 10, 11]) #+ 60 
+    
+else: 
+    print("That's not a river number we have data for!")
+
+
+# Plotting bookkeeping 
 n_lines = 10 # note: # timesteps must be divisible by n_lines with timesteps%n_lines == 0
 color = iter(plt.cm.viridis(np.linspace(0, 1, n_lines+1)))
 c = next(color)
 
-# bookkeeping 
-run_name = "Suiattle_" + model_state ## Use when testing
-
-base_dir = pathlib.Path.home() / "Documents" / "GitHub" / "Results"
-
-output_folder = base_dir/run_name
-output_folder.mkdir(parents=True, exist_ok=True)
-
 # %% ##### Set up the grid, channel characteristics #####
-current_dir = pathlib.Path.cwd()
-
-shp_file = os.path.join(current_dir.parent, ("data_Suia/Suiattle_river.shp"))
-points_shapefile = os.path.join(current_dir.parent, ("data_Suia/Suiattle_nodes.shp"))
 
 grid = read_shapefile(
-    shp_file,
+    links_shapefile,
     points_shapefile = points_shapefile,
     node_fields = ["usarea_km2", "F1m_LiDAR"],
     link_fields = ["usarea_km2", "Length_m", "Slope_sm", "Width_sm"],
@@ -299,7 +375,6 @@ Elev_change_DS = np.empty([grid.number_of_nodes,timesteps]) # 2d array of elevat
 
 # %% Pulse element variables
 fan_thickness = np.array([3.0, 6.25, 6.25, 5.75, 2.75, 1.25]) #meters
-fan_location= np.array([6, 7, 8, 9, 10, 11]) #+ 60
 
 pulse_parcel_vol = 25 #volume of each parcel m^3 - edited 1/9/25
 total_num_pulse_parcels = np.int64(4900000/pulse_parcel_vol * (1-bed_porosity))  
@@ -359,13 +434,12 @@ newpar_grid_elements.fill("link")
 
 # %% grain size for Pulse
 
-# field_grain_sizes = pd.read_excel((os.path.join(os.getcwd (), ("SuiattleFieldData_Combined20182019.xlsx"))), sheet_name = '3 - Grain size df deposit', header = 0)
-# Suiattle_gsd = field_grain_sizes["Size (cm)"].values
-# Suiattle_gsd_m = Suiattle_gsd/100
+# Field_gsd = field_grain_sizes["Size (cm)"].values
+# Field_gsd_m = Field_gsd/100
 # scaled_size = np.int64(total_num_pulse_parcels * 10)
 
 # # Scale up by repeating the array
-# scaled_gsd = np.resize(Suiattle_gsd_m, scaled_size)
+# scaled_gsd = np.resize(Field_gsd_m, scaled_size)
 # sorted_scaled_gsd = np.sort(scaled_gsd)
 # scaled_count = np.linspace(0,100,len(scaled_gsd))
 
@@ -380,10 +454,10 @@ newpar_grid_elements.fill("link")
 # new_D[:,0] = truncated_GSD[:total_num_pulse_parcels]
 # total_num_pulse_moved = 0
 
-# count = np.linspace(0,100,len(Suiattle_gsd_m))
+# count = np.linspace(0,100,len(Field_gsd_m))
 
 # # Plot scaled G
-# plt.semilogx(np.sort(Suiattle_gsd_m),count, color ="blue")
+# plt.semilogx(np.sort(Field_gsd_m),count, color ="blue")
 # plt.plot(np.log(sorted_scaled_gsd),scaled_count, color= "red")
 # plt.xlabel('Grain Size (log scale)')
 # plt.ylabel('Cumulative % Finer')
@@ -393,9 +467,8 @@ new_D = np.empty(((np.shape(newpar_element_id)[0]), 1), dtype=float)
 new_D[:,0] =0.01
 
 # %% Abrasion scenarios using Allison's field data
-field_data = pd.read_excel((os.path.join(current_dir.parent, ("data_Suia/SuiattleFieldData_Combined20182019.xlsx"))), sheet_name = '4-SHRSdfDeposit', header = 0)
 
-SHRS = field_data['SHRS median'].values
+SHRS = field_grain_strength['SHRS median'].values
 SHRS_MEAN = np.mean(SHRS)
 SHRS_STDEV = np.std(SHRS)
 
@@ -405,10 +478,8 @@ SHRS_distribution[SHRS_distribution<20]=20 # 9/10/24 - Hard coding this to preve
 
 measured_alphas = np.exp(1.122150830896329)*np.exp(-0.13637476779600016 *SHRS_distribution) # units: 1/km
  
-
 tumbler_2 = 2 * measured_alphas
 tumbler_4 = 4 * measured_alphas
-
 
 if scenario == 1:
     new_abrasion_rate = 0 * np.ones(np.size(newpar_element_id))
@@ -1310,7 +1381,7 @@ np.savez(npz_pcolor_name, sediment_active_percent=sediment_active_percent, num_p
 timestep_in_days = dt/86400
 # Converting the time in seconds to a timestamp
   
-file = open(str(output_folder)+'/Suiattle_run_characteristics_'+scenario_num+ '.txt', 'w')
+file = open(str(output_folder)+'/Run_characteristics_'+run_name+ '.txt', 'w')
 model_characteristics = ["This code is running for scenario %s" %scenario,  "This is the tau_c_multiplier %s" %tau_c_multiplier, 
                           "This is the number of timesteps %s" %timesteps, "The number of days in each timestep is %s" % timestep_in_days, # length of dt in days
                           "The pulse is added at timestep %s" %pulse_time,
