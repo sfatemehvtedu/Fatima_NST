@@ -52,7 +52,7 @@ scenario = 1 # 1= no abrasion, 2 = SHRS proxy, 3 = 4xSHRS
 run_note = 'testing' # adds this text to "run name". For shorter file names, try [] 
 
 # ##### Basic model parameters 
-timesteps = 10
+timesteps = 200
 pulse_time = 2
 num_hours_each_timestep = 8
 dt = 60*60*num_hours_each_timestep  # len of timesteps, in seconds 
@@ -91,7 +91,7 @@ if River == 1: # Suiattle
     field_grain_strength = pd.read_excel((os.path.join(current_dir, ("Suiattle_River_Data/SuiattleFieldData_Combined20182019.xlsx"))), sheet_name = '4-SHRSdfDeposit', header = 0)
 
     # Links we add pulse sediment to
-    fan_location= np.array([6, 7, 8, 9, 10, 11]) #+ 60 
+    fan_location= np.array([6, 7, 8, 9, 10, 11]) + 103 # for playing purposes, ~link 109, ordering LL is the same as DS 
 
 elif River == 2: # White Rainier
     river_name = 'WhiteRainier'
@@ -125,7 +125,7 @@ elif River == 3: # White Salmon
     field_grain_strength = pd.read_excel((os.path.join(current_dir, ("WhiteSalmon_River_Data/INSERT_name_here.xlsx"))), sheet_name = 'insert here', header = 0)
 
     # Links we add pulse sediment to
-    fan_location= np.array([6, 7, 8, 9, 10, 11]) #+ 60 
+    fan_location= np.array([6, 7, 8, 9, 10, 11]) 
     
 elif River == 4: # Lillooet
     river_name = 'Lillooet'
@@ -377,13 +377,15 @@ Elev_change_DS = np.empty([grid.number_of_nodes,timesteps]) # 2d array of elevat
 fan_thickness = np.array([3.0, 6.25, 6.25, 5.75, 2.75, 1.25]) #meters
 
 pulse_parcel_vol = 25 #volume of each parcel m^3 - edited 1/9/25
-total_num_pulse_parcels = np.int64(4900000/pulse_parcel_vol * (1-bed_porosity))  
+#total_num_pulse_parcels = np.int64(4900000/pulse_parcel_vol * (1-bed_porosity))  
 
 
 initial_pulse_volume = fan_thickness*length[fan_location]*width[fan_location] # m^3; volume of pulse that should be added to each link of the Chocolate Fan
 initial_pulse_rock_volume = initial_pulse_volume * (1-bed_porosity)
 initial_num_pulse_parcels_by_vol = initial_pulse_rock_volume/pulse_parcel_vol #number of parcels added to each link based on volume; 
 total_num_initial_pulse_parcels = int(np.sum(initial_num_pulse_parcels_by_vol))
+
+total_num_pulse_parcels = total_num_initial_pulse_parcels
 
 total_num_added_pulse_parcels = 0
 
@@ -464,7 +466,7 @@ newpar_grid_elements.fill("link")
 # plt.show()
 
 new_D = np.empty(((np.shape(newpar_element_id)[0]), 1), dtype=float)
-new_D[:,0] =0.01
+new_D[:,0] =0.0001
 
 # %% Abrasion scenarios using Allison's field data
 
@@ -561,7 +563,6 @@ for t in range(0, (timesteps*dt), dt):
         num_recycle_bed[max_index] += 1
         remaining_bed_sed -= 1
 
-
     indices_recyc_bed = []
 
     # Generate indices for each proportion
@@ -627,7 +628,7 @@ for t in range(0, (timesteps*dt), dt):
         
         total_num_added_pulse_parcels = total_num_initial_pulse_parcels
 
-        new_source = np.array(new_source)
+        # new_source = np.array(new_source) # WHY is this needed
         percent_pulse_added[np.int64(t/dt)] = total_num_added_pulse_parcels/total_num_pulse_parcels
         
         print('making a pulse')
@@ -904,7 +905,7 @@ elev_change_at_link = ((final_vol_on_link - initial_vol_on_link) /
 
 # Misc ones
 plt.figure(dpi=600)
-plt.pcolor(days, dist_downstream_DS, Sand_fraction_active, 
+plt.pcolor(days, dist_downstream_DS, Sand_fraction_active[index_sorted_area_link], 
             shading='nearest', 
             norm= None, 
             cmap="copper"
@@ -1280,7 +1281,7 @@ plt.show()
 
 # %% GIF within a link parcels
 
-for link in np.array([4,9,12,13,14,40,60,100]):#range(16):#range(grid.number_of_links):
+for link in np.array([114]):#4,9,12,13,14,40,60,100]):#range(16):#range(grid.number_of_links):
 
     # Initiate an animation writer using the matplotlib module, `animation`.
     figPulseAnim, axPulseAnim = plt.subplots(1, 1, dpi=600)
