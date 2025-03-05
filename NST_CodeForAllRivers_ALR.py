@@ -61,7 +61,7 @@ run_note = 'testing' # adds this text to "run name". For shorter file names, try
 # ##### Basic model parameters 
 timesteps = 100
 pulse_time = 2
-num_hours_each_timestep = 8
+num_hours_each_timestep = 24
 dt = 60*60*num_hours_each_timestep  # len of timesteps, in seconds 
 
 
@@ -1337,7 +1337,7 @@ plt.show()
 
 # %% GIF within a link parcels
 
-for link in np.array([114]):#4,9,12,13,14,40,60,100]):#range(16):#range(grid.number_of_links):
+for link in np.array([109,110,111,112,113,114,115,116,117,118]):#4,9,12,13,14,40,60,100]):#range(16):#range(grid.number_of_links):
 
     # Initiate an animation writer using the matplotlib module, `animation`.
     figPulseAnim, axPulseAnim = plt.subplots(1, 1, dpi=600)
