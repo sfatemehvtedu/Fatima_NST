@@ -532,25 +532,27 @@ for t in range(0, (timesteps*dt), dt):
         discharge = (0.2477 * area_link) + 8.8786
     
     
+# %%    # ###########   Parcel recycling by drainage area    ###########    
+    
     # Masking parcels
-    #boolean mask of parcels that have left the network
-    mask1 = parcels.dataset.element_id.values[:,-1] == OUT_OF_NETWORK
+    
     #boolean mask of parcels that are initial bed parcels (no pulse parcels)
     mask2 = parcels.dataset.source == "initial_bed_sed" 
+    #boolean mask of parcels that have left the network
+    mask1 = parcels.dataset.element_id.values[:,-1] == OUT_OF_NETWORK
+    mask1_v2 = parcels.dataset.element_id.values[mask2,-1] == OUT_OF_NETWORK
     
+    mask_combined = (parcels.dataset.element_id.values[:, -1] == OUT_OF_NETWORK) & (parcels.dataset.source == "initial_bed_sed")
     bed_sed_out_network = parcels.dataset.element_id.values[mask1 & mask2, -1] == -2
     
     
-    
-    
-    # ###########   Parcel recycling by drainage area    ###########
-    
     #index of the bed parcels that have left the network
     index_exiting_parcels = np.where(mask1 == True) 
+    print("Number of recycling parcels is: ", np.size(index_exiting_parcels))
     
     #number of parcels that will be recycled
     num_exiting_parcels = np.size(index_exiting_parcels)
-
+    
     # Calculate the total sum of area_link
     total_area = sum(area_link)
 
@@ -559,7 +561,7 @@ for t in range(0, (timesteps*dt), dt):
 
     # Calculate the number of parcels for each link based on proportions
     num_recycle_bed = [int(proportion * num_exiting_parcels) for proportion in proportions]
-
+   
     # Calculate the remaining parcels not accounted for by using int above
     remaining_bed_sed = num_exiting_parcels - sum(num_recycle_bed)
 
@@ -572,7 +574,7 @@ for t in range(0, (timesteps*dt), dt):
         additional_bed_sed[max_index] -= 1
         num_recycle_bed[max_index] += 1
         remaining_bed_sed -= 1
-
+        
 
     indices_recyc_bed = []
 
@@ -581,20 +583,22 @@ for t in range(0, (timesteps*dt), dt):
         indices_recyc_bed.extend([i] * num)
 
     indices_recyc_bed = np.squeeze(indices_recyc_bed)
-
-    # assign the new starting link
-    for bed_sed in index_exiting_parcels:
-        parcels.dataset.element_id.values[bed_sed, 0] = indices_recyc_bed
-        recyc_= np.where(parcels.dataset.element_id.values[bed_sed,0] == indices_recyc_bed)
-        
-        for recycle_destination in indices_recyc_bed:
-            parcels.dataset["recycle_destination"].values[recyc_] = np.full(num_exiting_parcels, "recycle_des %s" %recycle_destination)
-
+    
     n_recycled_parcels[np.int64(t/dt)]=np.sum(parcels.dataset.element_id.values[:,-1] == OUT_OF_NETWORK,-1)
     d_recycled_parcels[np.int64(t/dt)]=np.mean(parcels.dataset.D.values[parcels.dataset.element_id.values[:,-1] == OUT_OF_NETWORK,-1])
-    
-
-    
+        
+        # assign the new starting link
+    if np.size(bed_sed_out_network) > 0:    
+        parcels.dataset.element_id.values[index_exiting_parcels, -1] = indices_recyc_bed
+        parcels.dataset.starting_link.values[index_exiting_parcels] = OUT_OF_NETWORK # way to denote it was recycled
+        parcels.dataset.location_in_link.values[index_exiting_parcels] = 0.
+        
+        parcels.dataset["recycle_destination"].values[index_exiting_parcels] = np.full(num_exiting_parcels, f"recycle_des {indices_recyc_bed}")
+        
+        
+    else:
+         print("There are no recycled parcels in this timestep.")
+         
     
                 ########## Making a pulse #############
     if t==dt*pulse_time: 
