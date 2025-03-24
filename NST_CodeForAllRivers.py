@@ -2,11 +2,7 @@
 """
 Spyder Editor
 
-This is the code for my Fatemeh's dissertation research
-
-Tasks/Issues 2-26-25:
-    - one script for all sites
-    - check recycling
+This is the code for Fatemeh's dissertation research
    
 @author: longrea, pfeiffea, sfatemehvtedu
 
@@ -52,7 +48,7 @@ scenario = 1 # 1= no abrasion, 2 = SHRS proxy, 3 = 4xSHRS
 run_note = 'testing' # adds this text to "run name". For shorter file names, try [] 
 
 # ##### Basic model parameters 
-timesteps = 200
+timesteps = 10
 pulse_time = 2
 num_hours_each_timestep = 8
 dt = 60*60*num_hours_each_timestep  # len of timesteps, in seconds 
@@ -377,17 +373,11 @@ Elev_change_DS = np.empty([grid.number_of_nodes,timesteps]) # 2d array of elevat
 fan_thickness = np.array([3.0, 6.25, 6.25, 5.75, 2.75, 1.25]) #meters
 
 pulse_parcel_vol = 25 #volume of each parcel m^3 - edited 1/9/25
-#total_num_pulse_parcels = np.int64(4900000/pulse_parcel_vol * (1-bed_porosity))  
 
-
-initial_pulse_volume = fan_thickness*length[fan_location]*width[fan_location] # m^3; volume of pulse that should be added to each link of the Chocolate Fan
-initial_pulse_rock_volume = initial_pulse_volume * (1-bed_porosity)
-initial_num_pulse_parcels_by_vol = initial_pulse_rock_volume/pulse_parcel_vol #number of parcels added to each link based on volume; 
-total_num_initial_pulse_parcels = int(np.sum(initial_num_pulse_parcels_by_vol))
-
-total_num_pulse_parcels = total_num_initial_pulse_parcels
-
-total_num_added_pulse_parcels = 0
+total_pulse_volume = fan_thickness*length[fan_location]*width[fan_location] # m^3; volume of pulse that should be added to each link of the Chocolate Fan
+pulse_rock_volume = total_pulse_volume * (1-bed_porosity)
+initial_num_pulse_parcels_by_vol = pulse_rock_volume/pulse_parcel_vol #number of parcels added to each link based on volume; 
+total_num_pulse_parcels = int(np.sum(initial_num_pulse_parcels_by_vol))
 
 ## distribute the total_num_pulse_parcels proportional to fan thickness instead of evenly -- needs clean up
 fan_proportions = fan_thickness / fan_thickness.sum()
@@ -408,11 +398,15 @@ random.shuffle(pulse_location)
 newpar_element_id = pulse_location
 newpar_element_id = np.expand_dims(newpar_element_id, axis=1)   
 
-
 new_starting_link = np.squeeze(pulse_location)
 
 np.random.seed(0)
- 
+new_time_arrival_in_link = pulse_time + 0.99 + 0.0001* np.expand_dims(
+    np.random.uniform(size=np.size(newpar_element_id)), axis=1
+) 
+
+Pulse_cum_transport = np.ones([total_num_pulse_parcels ,1])*np.nan
+
 new_volume = pulse_parcel_vol*np.ones(np.shape(newpar_element_id))  # (m3) the volume of each parcel
 
 new_source = ["pulse"] * np.size(
@@ -488,7 +482,7 @@ if scenario == 1:
     new_density = 2650 * np.ones(np.size(newpar_element_id))  # (kg/m3) standard
     print('Scenario 1 pulse: no abrasion')
 elif scenario == 2:
-    new_abrasion_rate = (measured_alphas/1000)* np.ones(np.size(newpar_element_id)) #0.3 % mass loss per METER
+    new_abrasion_rate = (measured_alphas/1000)* np.ones(np.size(newpar_element_id)) # mass loss per METER
     new_density = 928.6259337721524*np.log(SHRS_distribution) + (-1288.1880919573282)
     #new_density = 894.978992640976*np.log(SHRS_distribution)-1156.7599235065895
     print('Scenario 2 pulse: variable abrasion, SH proxy')
@@ -523,24 +517,26 @@ for t in range(0, (timesteps*dt), dt):
     else:
         discharge = (0.2477 * area_link) + 8.8786
     
+# %%    # ###########   Parcel recycling by drainage area    ###########    
     
     # Masking parcels
-    #boolean mask of parcels that have left the network
-    mask1 = parcels.dataset.element_id.values[:,-1] == OUT_OF_NETWORK
+    
     #boolean mask of parcels that are initial bed parcels (no pulse parcels)
     mask2 = parcels.dataset.source == "initial_bed_sed" 
+    #boolean mask of parcels that have left the network
+    mask1 = parcels.dataset.element_id.values[:,-1] == OUT_OF_NETWORK
+    mask1_v2 = parcels.dataset.element_id.values[mask2,-1] == OUT_OF_NETWORK
     
+    mask_combined = (parcels.dataset.element_id.values[:, -1] == OUT_OF_NETWORK) & (parcels.dataset.source == "initial_bed_sed")
     bed_sed_out_network = parcels.dataset.element_id.values[mask1 & mask2, -1] == -2
     
-    
-# %%    # ###########   Parcel recycling by drainage area    ###########
-    
     #index of the bed parcels that have left the network
-    index_exiting_parcels = np.where(bed_sed_out_network == True) 
+    index_exiting_parcels = np.where(mask1 == True) 
+    print("Number of recycling parcels is: ", np.size(index_exiting_parcels))
     
     #number of parcels that will be recycled
     num_exiting_parcels = np.size(index_exiting_parcels)
-
+    
     # Calculate the total sum of area_link
     total_area = sum(area_link)
 
@@ -549,7 +545,7 @@ for t in range(0, (timesteps*dt), dt):
 
     # Calculate the number of parcels for each link based on proportions
     num_recycle_bed = [int(proportion * num_exiting_parcels) for proportion in proportions]
-
+   
     # Calculate the remaining parcels not accounted for by using int above
     remaining_bed_sed = num_exiting_parcels - sum(num_recycle_bed)
 
@@ -562,7 +558,7 @@ for t in range(0, (timesteps*dt), dt):
         additional_bed_sed[max_index] -= 1
         num_recycle_bed[max_index] += 1
         remaining_bed_sed -= 1
-
+        
     indices_recyc_bed = []
 
     # Generate indices for each proportion
@@ -571,78 +567,50 @@ for t in range(0, (timesteps*dt), dt):
 
     indices_recyc_bed = np.squeeze(indices_recyc_bed)
     
-
-    # assign the new starting link
-    for bed_sed in index_exiting_parcels:
-        parcels.dataset.element_id.values[bed_sed, 0] = indices_recyc_bed
-        recyc_= np.where(parcels.dataset.element_id.values[bed_sed,0] == indices_recyc_bed)
-        
-        indices_recyc_bed = np.atleast_1d(indices_recyc_bed)
-        if indices_recyc_bed.size > 0:
-            for recycle_destination in indices_recyc_bed:
-                parcels.dataset["recycle_destination"].values[recyc_] = np.full(num_exiting_parcels, f"recycle_des {recycle_destination}")
-        else:
-            print("There are no recycled parcels in this timestep.")
-
     n_recycled_parcels[np.int64(t/dt)]=np.sum(parcels.dataset.element_id.values[:,-1] == OUT_OF_NETWORK,-1)
     d_recycled_parcels[np.int64(t/dt)]=np.mean(parcels.dataset.D.values[parcels.dataset.element_id.values[:,-1] == OUT_OF_NETWORK,-1])
-    
-    
-# %% ########## Making a pulse #############  
-    mask_ispulse = parcels.dataset.source == 'pulse'
+        
+        # assign the new starting link
+    if np.size(bed_sed_out_network) > 0:    
+        parcels.dataset.element_id.values[index_exiting_parcels, -1] = indices_recyc_bed
+        parcels.dataset.starting_link.values[index_exiting_parcels] = OUT_OF_NETWORK # way to denote it was recycled
+        parcels.dataset.location_in_link.values[index_exiting_parcels] = 0.
+        
+        parcels.dataset["recycle_destination"].values[index_exiting_parcels] = np.full(num_exiting_parcels, f"recycle_des {indices_recyc_bed}")
+        
+    else:
+         print("There are no recycled parcels in this timestep.")
+         
 
-    # Calculate the current timestep
-    current_timestep = t // dt
-    
-
-    # Check if it's the time for pulse evaluation
-    
-    if t == dt * pulse_time:  
-            
-        print ("# First pulse time")
-    
-        new_time_arrival_in_link = nst._time_idx + np.expand_dims(
-                np.random.uniform(size=total_num_initial_pulse_parcels), axis=1
-            )
-
-        new_parcels = {"grid_element": newpar_grid_elements[:total_num_initial_pulse_parcels],
-              "element_id": newpar_element_id[:total_num_initial_pulse_parcels]}
+     ########## Making a pulse #############
+    if t==dt*pulse_time: 
+        print('making a pulse')
+        print('t = ',t, ',timestep = ', t/dt)
+        
+        new_parcels = {"grid_element": newpar_grid_elements,
+                 "element_id": newpar_element_id}
 
         new_variables = {
-            "starting_link": (["item_id"], new_starting_link[:total_num_initial_pulse_parcels]),
-            "abrasion_rate": (["item_id"], new_abrasion_rate[:total_num_initial_pulse_parcels]),
-            "density": (["item_id"], new_density[:total_num_initial_pulse_parcels]),
-            "source": (["item_id"], new_source[:total_num_initial_pulse_parcels]),
+            "starting_link": (["item_id"], new_starting_link),
+            "abrasion_rate": (["item_id"], new_abrasion_rate),
+            "density": (["item_id"], new_density),
+            "source": (["item_id"], new_source),
             "time_arrival_in_link": (["item_id", "time"], new_time_arrival_in_link),
-            "active_layer": (["item_id", "time"], new_active_layer[:total_num_initial_pulse_parcels]),
-            "location_in_link": (["item_id", "time"], new_location_in_link[:total_num_initial_pulse_parcels]),
-            "D": (["item_id", "time"], new_D[:total_num_initial_pulse_parcels]),
-            "volume": (["item_id", "time"], new_volume[:total_num_initial_pulse_parcels]),
+            "active_layer": (["item_id", "time"], new_active_layer),
+            "location_in_link": (["item_id", "time"], new_location_in_link),
+            "D": (["item_id", "time"], new_D),
+            "volume": (["item_id", "time"], new_volume),
             }
-        
+
         parcels.add_item(
                 time=[nst._time],
                 new_item = new_parcels,
                 new_item_spec = new_variables
-                )
+        )
         
-        total_num_added_pulse_parcels = total_num_initial_pulse_parcels
-
-        # new_source = np.array(new_source) # WHY is this needed
-        percent_pulse_added[np.int64(t/dt)] = total_num_added_pulse_parcels/total_num_pulse_parcels
-        
-        print('making a pulse')
-        print("On this timestep the total number of pulse parcels added = ", total_num_added_pulse_parcels)
-        
-        print('total_num_added_pulse_parcels =', total_num_added_pulse_parcels)
-        print('t = ',t, ',timestep = ', t/dt) 
-        
-
-# %% Run one timestep    
-    
-    # #######   Ta da!    #########     
+     # #######   Ta da!    #########     
+       
     nst.run_one_step(dt)
-
     
 #%% #Calculate Variables and tracking timesteps
     if t == parcels.dataset.time[0].values: # if we're at the first timestep
@@ -657,8 +625,6 @@ for t in range(0, (timesteps*dt), dt):
         
     Elev_change_DS[:,np.int64(t/dt)] = (grid.at_node['topographic__elevation']-elev_initial)[index_sorted_area_node]
     
-
-        
     if t%((timesteps*dt)/n_lines)==0:  
         
         # Animation
@@ -733,7 +699,7 @@ for t in range(0, (timesteps*dt), dt):
     vol_pulse_on[np.int64(t/dt)]=np.sum(volume_of_pulse[element_pulse!= OUT_OF_NETWORK])
     vol_pulse_exited[np.int64(t/dt)]=np.sum(volume_of_pulse[element_pulse == OUT_OF_NETWORK])
     
-    vol_pulse_abraded[np.int64(t/dt)]= ((total_num_added_pulse_parcels
+    vol_pulse_abraded[np.int64(t/dt)]= ((total_num_pulse_parcels
                                         * pulse_parcel_vol)
                                         - vol_pulse_on[np.int64(t/dt)]
                                         - vol_pulse_exited[np.int64(t/dt)]
@@ -1155,7 +1121,7 @@ plt.savefig(plot_name, dpi=700)
 plt.show()
 
 # How far have the non-pulse parcels traveled in total?
-travel_dist = nst._distance_traveled_cumulative[:-total_num_initial_pulse_parcels]
+travel_dist = nst._distance_traveled_cumulative[:-total_num_pulse_parcels]
 nonzero_travel_dist = travel_dist[travel_dist>0]
 plt.hist(np.log10(nonzero_travel_dist),30) # better to make log-spaced bins...
 plt.xlabel('log10( Cum. parcel travel distance (m) )')
@@ -1281,14 +1247,14 @@ plt.show()
 
 # %% GIF within a link parcels
 
-for link in np.array([114]):#4,9,12,13,14,40,60,100]):#range(16):#range(grid.number_of_links):
+for link in np.array([109,110,111,112,113,114,115,116,117,118]):#4,9,12,13,14,40,60,100]):#range(16):#range(grid.number_of_links):
 
     # Initiate an animation writer using the matplotlib module, `animation`.
     figPulseAnim, axPulseAnim = plt.subplots(1, 1, dpi=600)
-    writer = animation.FFMpegWriter(fps=20)
+    writer = animation.FFMpegWriter(fps=5)
     gif_name = str(output_folder) +"/"+ scenario_num + "--Parcel_evol_at_link" + str(link) +".gif"
     writer.setup(figPulseAnim,gif_name)
-    for tstep in np.arange(0,timesteps,5):#range(timesteps):
+    for tstep in np.arange(0,timesteps,1):#range(timesteps):
     # for tstep in [500]: # for now, doing for just one timestep
         mask_here = parcels.dataset.element_id.values[:,tstep] == link
         time_arrival = parcels.dataset.time_arrival_in_link.values[mask_here, tstep]
@@ -1387,7 +1353,7 @@ model_characteristics = ["This code is running for scenario %s" %scenario,  "Thi
                           "This is the number of timesteps %s" %timesteps, "The number of days in each timestep is %s" % timestep_in_days, # length of dt in days
                           "The pulse is added at timestep %s" %pulse_time,
                           "The volume of each pulse parcel is %s" %pulse_parcel_vol, "This is the number of pulse parcels added to the network %s"
-                          %total_num_added_pulse_parcels,
+                          %total_num_pulse_parcels,
                           
                           "The current stage of this code is editing variables to be normalized since steady state."]
 for line in model_characteristics:
@@ -1427,7 +1393,7 @@ for percent in percent_of_pulse:
     leading_edge = np.ones(timesteps) * np.nan
 
 
-    the_pc_initial_pulse_vol = np.sum(initial_pulse_volume) * percent
+    the_pc_pulse_vol  = np.sum(total_pulse_volume) * percent
     
     
     sorted_pulse_volume = volume_pulse_at_each_link_DS[::-1]
@@ -1435,7 +1401,7 @@ for percent in percent_of_pulse:
         + vol_pulse_exited
         + vol_pulse_abraded
         )
-    exceed_mask = sorted_summed_pulse_volume > the_pc_initial_pulse_vol
+    exceed_mask = sorted_summed_pulse_volume > the_pc_pulse_vol
     first_exceed_index = np.where(exceed_mask.any(axis=0), np.argmax(exceed_mask, axis=0), np.nan)
     pulse_5pct_vol_loc_km = np.full(timesteps, np.nan)
     valid_indices = ~np.isnan(first_exceed_index)
